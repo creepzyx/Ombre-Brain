@@ -16,6 +16,7 @@ import yaml
 import logging
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 def load_config(config_path: str = None) -> dict:
@@ -226,7 +227,7 @@ def count_tokens_approx(text: str) -> int:
 
 def now_iso() -> str:
     """
-    Return current time as ISO format string.
-    返回当前时间的 ISO 格式字符串。
+    Return current time as ISO format string (UTC+8).
+    返回当前时间的 ISO 格式字符串（UTC+8）。
     """
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
