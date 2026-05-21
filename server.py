@@ -785,6 +785,8 @@ async def hold(
     feel: bool = False,
     source_bucket: str = "",    valence: float = -1,
     arousal: float = -1,
+    domain: str = "",
+    name: str = "",
 ) -> str:
     """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被消化的记忆桶ID(feel模式下,标记源记忆为已消化)。"""
     await decay_engine.ensure_started()
@@ -795,6 +797,7 @@ async def hold(
 
     importance = max(1, min(10, importance))
     extra_tags = [t.strip() for t in tags.split(",") if t.strip()]
+    extra_domain = [d.strip() for d in domain.split(",") if d.strip()]
 
     # --- Feel mode: store as feel type, minimal metadata ---
     # --- Feel 模式：存为 feel 类型，最少元数据 ---
@@ -828,28 +831,34 @@ async def hold(
                 logger.warning(f"Failed to mark source as digested / 标记已消化失败: {e}")
         return f"🫧feel→{bucket_id}"
 
-    # --- Step 1: auto-tagging / 自动打标 ---
-    try:
-        analysis = await dehydrator.analyze(content)
-    except Exception as e:
-        logger.warning(f"Auto-tagging failed, using defaults / 自动打标失败: {e}")
+# --- Step 1: auto-tagging (skip if user provided tags + domain) ---
+    if extra_tags and extra_domain:
         analysis = {
-            "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
-            "tags": [], "suggested_name": "",
+            "domain": extra_domain, "valence": 0.5, "arousal": 0.3,
+            "tags": extra_tags, "suggested_name": name or "",
         }
+    else:
+        try:
+            analysis = await dehydrator.analyze(content)
+        except Exception as e:
+            logger.warning(f"Auto-tagging failed, using defaults / 自动打标失败: {e}")
+            analysis = {
+                "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
+                "tags": [], "suggested_name": "",
+            }
 
-    domain = analysis["domain"]
+    domain_list = extra_domain if extra_domain else analysis["domain"]
     auto_valence = analysis["valence"]
     auto_arousal = analysis["arousal"]
     auto_tags = analysis["tags"]
-    suggested_name = analysis.get("suggested_name", "")
+    suggested_name = name or analysis.get("suggested_name", "")
 
     # --- User-supplied valence/arousal takes priority over analyze() result ---
     # --- 用户显式传入的 valence/arousal 优先，analyze() 结果作为 fallback ---
     final_valence = valence if 0 <= valence <= 1 else auto_valence
     final_arousal = arousal if 0 <= arousal <= 1 else auto_arousal
 
-    all_tags = list(dict.fromkeys(auto_tags + extra_tags))
+    all_tags = list(dict.fromkeys(extra_tags if extra_tags else auto_tags))
 
     # --- Pinned buckets bypass merge and are created directly in permanent dir ---
     # --- 钉选桶跳过合并，直接新建到 permanent 目录 ---
@@ -858,7 +867,7 @@ async def hold(
             content=content,
             tags=all_tags,
             importance=10,
-            domain=domain,
+            domain=domain_list,
             valence=final_valence,
             arousal=final_arousal,
             name=suggested_name or None,
@@ -869,14 +878,14 @@ async def hold(
             await embedding_engine.generate_and_store(bucket_id, content)
         except Exception:
             pass
-        return f"📌钉选→{bucket_id} {','.join(domain)}"
+        return f"📌钉选→{bucket_id} {','.join(domain_list)}"
 
     # --- Step 2: merge or create / 合并或新建 ---
     result_name, is_merged = await _merge_or_create(
         content=content,
         tags=all_tags,
         importance=importance,
-        domain=domain,
+        domain=domain_list,
         valence=final_valence,
         arousal=final_arousal,
         name=suggested_name,
