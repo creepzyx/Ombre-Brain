@@ -893,7 +893,7 @@ async def hold(
 
     action = "合并→" if is_merged else "新建→"
     name_warning = " ⚠️未命名" if not name or not name.strip() else ""
-    return f"{action}{result_name}{name_warning} {','.join(domain)}"
+    return f"{action}{result_name}{name_warning} {','.join(domain_list)}"
 
 
 # =============================================================
